@@ -1,0 +1,161 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+Used the normalized count data from Dimitra, filter counts<5 in less than 6 samples (number of biological replicates per condition), run DE analysis with Limma Voom and maSigPro
+
+```{r}
+#read the normalized gene count data from Dimitra
+normcount<-read.delim("C:/Users/guoxiao/Documents/Sophieguo/Projects/MouseExperiment/B6Young-old/results from Dimitra/APXG-OldYoung-Sleepy-MFC/APXG-OldYoung-Sleepy-MFC/gene_counts/FINAL_master_list_of_gene_counts_MIN.sense.APXG-OldYoung-Sleepy-MFC.txt", row.names=1, stringsAsFactors=FALSE)
+
+#creat a "id" column that contains the ensembl gene id
+normcount<-normcount%>%
+  rownames_to_column("id")
+
+normcount_matrix<-as.matrix(normcount[,2:109]) #creat a matrix that contains the gene count data
+
+normcount_gene<-normcount[,c(1,110,111)] #creat a data frame that contains the gene info
+
+library(biomaRt)
+
+mouseensembl<-useMart(biomart="ensembl", dataset="mmusculus_gene_ensembl")
+
+MouseIDs<-getBM(attributes = c("ensembl_gene_id","entrezgene","description","gene_biotype"),
+                mart=mouseensembl)
+
+MouseIDs<-MouseIDs%>%
+  dplyr::rename(.,id=ensembl_gene_id)%>%
+  dplyr::rename(.,ENTREZID=entrezgene)%>%
+  distinct(id,.keep_all = TRUE)
+
+normcount_gene<-left_join(normcount_gene,MouseIDs,by="id") #add more annotation to the gene id
+
+
+#creat a data frame that contains the sample info; add more columns to describe the conditions
+sampleID<-colnames(normcount_matrix)
+normcount_sample<-as.data.frame(sampleID)
+  
+normcount_sample<-normcount_sample%>%
+  mutate(., age=factor(ifelse(grepl("Young",sampleID),"Young","Old"),levels=c("Young","Old")))%>%
+  mutate(., sleep=factor(ifelse(grepl("SS",sampleID),"SS",
+                         ifelse(grepl("SD",sampleID),"SD","Z0")),
+                                                 levels=c("Z0","SS","SD")))%>%
+  mutate(.,timepoint=factor(ifelse(grepl("Z0",sampleID),"Z0",
+                            ifelse(grepl("3hr",sampleID),"3hr",
+                            ifelse(grepl("6hr",sampleID),"6hr",
+                            ifelse(grepl("9hr",sampleID),"9hr","12hr")))),
+                            levels=c("Z0","3hr","6hr","9hr","12hr")))%>%
+  mutate(.,age_sleep=factor(ifelse(grepl("Young.SS",sampleID),"Y.SS",
+                            ifelse(grepl("Young.SD",sampleID),"Y.SD",
+                            ifelse(grepl("Young.Z0",sampleID),"Y.Z0",
+                            ifelse(grepl("Old.SS",sampleID),"O.SS",
+                            ifelse(grepl("Old.SD",sampleID),"O.SD","O.Z0"))))),
+                            levels=c("Y.Z0","Y.SS","Y.SD","O.Z0","O.SS","O.SD")))
+  
+
+  x <- DGEList(counts=normcount_matrix, samples=normcount_sample, genes=normcount_gene) #creat DGElist object x
+  
+  table(rowSums(x$counts==0)==108) #no gene has zero count across all 108 samples in normalized 
+  
+  table(rowSums(x[,1:54]$counts==0)==54)#1370/24836 genes have zero counts across all 54 young animals
+table(rowSums(x[,55:108]$counts==0)==54)#906/24836 genes have zero counts across all 54 old animals
+  
+keep.exprs <- rowSums(x$counts>=5)>=6 #keep genes have at least 5 counts in at least 6 samples (n=6 per condition); 16243 genes left
+x2 <- x[keep.exprs,, keep.lib.sizes=FALSE] # recalculate the library sizes
+
+library(RColorBrewer)
+
+nsamples <- ncol(x)
+
+col<-colorRampPalette(brewer.pal(12, "Paired"))(nsamples)
+
+lcpm <- cpm(x, log=TRUE)
+lcpm2 <- cpm(x2, log=TRUE)
+par(mfrow=c(1,2))
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.21), las=2, 
+     main="", xlab="")
+title(main="A. Raw data", xlab="Log-cpm")
+abline(v=-2, lty=3)
+for (i in 2:nsamples){
+ den <- density(lcpm[,i])
+ lines(den$x, den$y, col=col[i], lwd=2)
+}
+
+plot(density(lcpm2[,1]), col=col[1], lwd=2, ylim=c(0,0.21), las=2, 
+     main="", xlab="")
+title(main="B. Filtered data", xlab="Log-cpm")
+abline(v=-2, lty=3)
+for (i in 2:nsamples){
+   den <- density(lcpm2[,i])
+   lines(den$x, den$y, col=col[i], lwd=2)
+}
+
+test<-grepl("protein_coding",x2$genes$gene_biotype)#keep genes that is protein coding
+x3<-x2[test,,keep.lib.sizes=TRUE]# not re-calculate the library sizes
+
+
+ids_to_remove<-"ENSMUSG00000064351"
+
+lib.sizes = colSums(x$counts[!rownames(x$counts) %in% c(ids_to_remove),]) #remove the high expresser identified by PORT from lib.size calculation and use this value in voom funcion.
+
+#Plot Library sizes and distribution plots
+barplot(x$samples$lib.size,main="lib.size_PORT")
+abline(h=median(x$samples$lib.size),col="red")
+
+barplot(x2$samples$lib.size,main="lib.size_filtered")
+abline(h=median(x$samples$lib.size),col="red")
+
+barplot(lib.sizes,main="remove high expresser")
+abline(h=median(lib.sizes),col="blue")
+
+boxplot(lcpm,ylab="Log2 counts per million",main="logCPMs_PORT")
+abline(h=median(lcpm),col="blue")
+
+boxplot(lcpm2,ylab="Log2 counts per million",main="logCPMs_PORT_filtered")
+abline(h=median(lcpm2),col="blue")
+
+#Multidimensional scaling plots
+
+col.age<-c("purple","orange")[x2$samples$age]
+
+pch.age<-c(10,1,16)[x2$samples$sleep]
+
+plotMDS(lcpm2, pch=pch.age, col=col.age,xlab="Dimention 1",ylab="Dimention 2",cex=1.5)
+title(main="Multidimensional scaling")
+legend("topright",fill=c("purple","orange"),legend=levels(x2$samples$age),cex=1)
+legend("bottomright",pch=c(10,1,16),legend=levels(x2$samples$sleep),cex=1)
+
+
+
+#PMD plots look not as nice as when RNAseq123 (basically normalize with edgeR instead of PORT), so decided to go back to edgeR normalized data and perceed to run analysis with maSigPro
+
+
+#run voom and limma
+
+design <- model.matrix(~0+x2$samples$age_sleep)
+colnames(design) <- levels(x2$samples$age_sleep)
+
+v<-voom(x2, design, lib.size = lib.sizes, plot=FALSE)
+
+contr <- makeContrasts(
+  SDvsSS.Y = Y.SD-Y.SS, 
+   SDvsSS.O = O.SD-O.SS,
+   OvsY.SS=O.SS-Y.SS,
+  OvsY.SD=O.SD-Y.SD
+   , levels=design)
+
+
+vfit <- lmFit(v, design)
+vfit2 <- eBayes(contrasts.fit(vfit, contrasts=contr))
+
+summary(decideTests(vfit2))
+```
