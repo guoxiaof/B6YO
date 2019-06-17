@@ -1,43 +1,39 @@
 # work with GitHub on Git Bash
 
+## move to specific folder (U:/)
+$ cd U:/
+## creat a folder "B6YO" and enter it
 $ mkdir B6YO  
-#creat a folder "B6YO" at U:/
 $ cd B6YO  
-#go into folder "B6YO"
+##Initialized empty Git repository in local computer
 $ git init 
-#Initialized empty Git repository in U:/B6YO/.git/
+##checking the status of git
 $ git status 
-#checking the status of git
-# On branch master
-# No commits yet
-#nothing to commit (create/copy files and use "git add" to track)
+  ~On branch master
+  ~No commits yet
+  ~nothing to commit (create/copy files and use "git add" to track)
+##list files in the folder
 $ ls   
-#list files in the folder
+##add readme.md to staging area
 $ git add readme.md 
-#add readme.md to staging area
+##comit new changes to local folder
 $ git status 
-#changes to committed; new file: readme.md
 $git commit -m: "Initial commit"  
-#commit the change
+##check the pass commit and its message
 $git log   
-#check the pass commit and its message
+## add everything in the folder (instead of one name)
 $ git add .  
-# add everything in the folder
-$ git commit -m "xxx" 
-#commit all changes
+## add files you want git to ignore
 $ touch .gitignore 
-# add files you want git to ignore
-$ git remote add orgin http://github.com/guoxiaof/B6YO.git 
-#add files to repository in github
-$ git push -u origin master 
-#push files to github
 
-#any new change 
+##add files to repository in github
+$ git remote add orgin http://github.com/guoxiaof/B6YO.git 
+##push files to github
+$ git push -u origin master 
+##any new change 
 $git status
 $git add .
 $git commit -m "xxxmessage"
 $git push origin master 
-
-#or 
-
+###or
 $git push
